@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: newticket
+  profiles:
+    active: local
+
+jwt:
+  secret: ${JWT_SECRET:local-dev-secret-key-must-be-at-least-32-chars-long}
+  access-token-expiration: 1800000    # 30분
+  refresh-token-expiration: 604800000 # 7일
+
+toss:
+  secret-key: ${TOSS_SECRET_KEY:test_sk_placeholder}
+  confirm-url: https://api.tosspayments.com/v1/payments/confirm
+
+tmdb:
+  api-key: ${TMDB_API_KEY:c77f19e90ff64e33c3853f11722729c5}
+  now-playing-url: https://api.themoviedb.org/3/movie/now_playing
+  image-base-url: https://image.tmdb.org/t/p/w500

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>NewTicket 결제 테스트</title>
+  <script src="https://js.tosspayments.com/v1/payment"></script>
+  <style>
+    body { font-family: sans-serif; max-width: 600px; margin: 40px auto; padding: 0 20px; }
+    h2 { border-bottom: 2px solid #333; padding-bottom: 8px; }
+    input, select { width: 100%; padding: 8px; margin: 6px 0 14px; box-sizing: border-box; }
+    button { padding: 10px 20px; background: #3182f6; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 15px; }
+    button:hover { background: #1b6ef3; }
+    pre { background: #f4f4f4; padding: 14px; border-radius: 6px; overflow-x: auto; font-size: 13px; }
+    .step { margin-bottom: 30px; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
+    .tag.success { background: #d1fae5; color: #065f46; }
+    .tag.error { background: #fee2e2; color: #991b1b; }
+    .tag.pending { background: #fef3c7; color: #92400e; }
+  </style>
+</head>
+<body>
+
+<h1>🎟 NewTicket 결제 테스트</h1>
+
+<!-- STEP 1: 로그인 -->
+<div class="step" id="step-login">
+  <h2>1단계. 로그인 / 회원가입</h2>
+  <label>이메일</label>
+  <input id="email" value="test@example.com">
+  <label>비밀번호</label>
+  <input id="password" type="password" value="password123">
+  <label>닉네임 (회원가입 시)</label>
+  <input id="nickname" value="테스터">
+  <div style="display:flex; gap:10px;">
+    <button onclick="login()">로그인</button>
+    <button onclick="signup()" style="background:#6b7280">회원가입</button>
+  </div>
+  <pre id="login-result" style="display:none"></pre>
+</div>
+
+<!-- STEP 2: 이벤트 선택 & 예매 -->
+<div class="step" id="step-booking" style="display:none">
+  <h2>2단계. 이벤트 & 좌석 선택</h2>
+  <label>이벤트</label>
+  <select id="event-select" onchange="loadSeats()"></select>
+  <label>좌석</label>
+  <select id="seat-select"></select>
+  <br><br>
+  <button onclick="createBooking()">예매하기</button>
+  <pre id="booking-result" style="display:none"></pre>
+</div>
+
+<!-- STEP 3: 결제 -->
+<div class="step" id="step-payment" style="display:none">
+  <h2>3단계. 결제</h2>
+  <div id="booking-summary"></div>
+  <br>
+  <button onclick="pay()">토스페이먼츠로 결제</button>
+</div>
+
+<!-- STEP 4: 결제 결과 (리다이렉트 후) -->
+<div class="step" id="step-result" style="display:none">
+  <h2>결제 결과</h2>
+  <pre id="payment-result"></pre>
+</div>
+
+<script>
+  const CLIENT_KEY = 'test_ck_mBZ1gQ4YVXbKQjWgP9e68l2KPoqN';
+  const BASE = 'http://localhost:8080';
+  let token = '';
+  let bookingData = null;
+
+  // 리다이렉트 후 결제 승인 처리
+  window.onload = async () => {
+    const params = new URLSearchParams(location.search);
+    const paymentKey = params.get('paymentKey');
+    const orderId = params.get('orderId');
+    const amount = params.get('amount');
+
+    if (paymentKey && orderId && amount) {
+      document.getElementById('step-result').style.display = 'block';
+      token = sessionStorage.getItem('token') || '';
+
+      const res = await fetch(`${BASE}/api/payments/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ paymentKey, orderId, amount: parseInt(amount) })
+      });
+      const data = await res.json();
+      const el = document.getElementById('payment-result');
+      el.textContent = JSON.stringify(data, null, 2);
+      if (data.success) {
+        el.insertAdjacentHTML('beforebegin', '<span class="tag success">✅ 결제 완료</span><br><br>');
+      } else {
+        el.insertAdjacentHTML('beforebegin', '<span class="tag error">❌ 결제 실패</span><br><br>');
+      }
+      history.replaceState({}, '', '/payment-test.html');
+      return;
+    }
+
+    const fail = params.get('code');
+    if (fail) {
+      document.getElementById('step-result').style.display = 'block';
+      document.getElementById('payment-result').textContent =
+        `결제 실패\ncode: ${fail}\nmessage: ${params.get('message')}`;
+      history.replaceState({}, '', '/payment-test.html');
+    }
+  };
+
+  async function signup() {
+    const res = await fetch(`${BASE}/api/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: document.getElementById('email').value,
+        password: document.getElementById('password').value,
+        nickname: document.getElementById('nickname').value
+      })
+    });
+    const data = await res.json();
+    const el = document.getElementById('login-result');
+    el.style.display = 'block';
+    el.textContent = data.success ? '✅ 회원가입 성공! 이제 로그인하세요.' : '❌ ' + JSON.stringify(data);
+  }
+
+  async function login() {
+    const el = document.getElementById('login-result');
+    el.style.display = 'block';
+    el.textContent = '요청 중...';
+    try {
+      const res = await fetch(`${BASE}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: document.getElementById('email').value, password: document.getElementById('password').value })
+      });
+      const data = await res.json();
+      if (data.success) {
+        token = data.data.accessToken;
+        sessionStorage.setItem('token', token);
+        el.textContent = '✅ 로그인 성공';
+        document.getElementById('step-booking').style.display = 'block';
+        loadEvents();
+      } else {
+        el.textContent = '❌ ' + JSON.stringify(data);
+      }
+    } catch(e) {
+      el.textContent = '❌ 네트워크 오류: ' + e.message;
+    }
+  }
+
+  async function loadEvents() {
+    const res = await fetch(`${BASE}/api/events`);
+    const data = await res.json();
+    const sel = document.getElementById('event-select');
+    sel.innerHTML = '';
+    data.data.forEach(e => {
+      const opt = document.createElement('option');
+      opt.value = e.id;
+      opt.text = `[${e.category}] ${e.title} - ${e.venue}`;
+      sel.appendChild(opt);
+    });
+    loadSeats();
+  }
+
+  async function loadSeats() {
+    const eventId = document.getElementById('event-select').value;
+    const res = await fetch(`${BASE}/api/events/${eventId}/seats`);
+    const data = await res.json();
+    const sel = document.getElementById('seat-select');
+    sel.innerHTML = '';
+    data.data.filter(s => s.status === 'AVAILABLE').forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.text = `${s.grade} ${s.seatNumber} - ${s.price.toLocaleString()}원`;
+      sel.appendChild(opt);
+    });
+  }
+
+  async function createBooking() {
+    const eventId = parseInt(document.getElementById('event-select').value);
+    const seatId = parseInt(document.getElementById('seat-select').value);
+    const res = await fetch(`${BASE}/api/bookings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ eventId, seatIds: [seatId] })
+    });
+    const data = await res.json();
+    const el = document.getElementById('booking-result');
+    el.style.display = 'block';
+    el.textContent = JSON.stringify(data.data, null, 2);
+    if (data.success) {
+      bookingData = data.data;
+      document.getElementById('step-payment').style.display = 'block';
+      document.getElementById('booking-summary').innerHTML =
+        `<b>${data.data.eventTitle}</b><br>주문번호: ${data.data.orderId}<br>결제금액: <b>${data.data.totalAmount.toLocaleString()}원</b>`;
+    }
+  }
+
+  function pay() {
+    const tossPayments = TossPayments(CLIENT_KEY);
+    tossPayments.requestPayment('카드', {
+      amount: bookingData.totalAmount,
+      orderId: bookingData.orderId,
+      orderName: bookingData.eventTitle,
+      customerName: '테스터',
+      successUrl: `${BASE}/payment-test.html`,
+      failUrl: `${BASE}/payment-test.html`,
+    });
+  }
+</script>
+</body>
+</html>

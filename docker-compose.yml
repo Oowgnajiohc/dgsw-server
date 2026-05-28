@@ -1,0 +1,50 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: newticket-mysql
+    environment:
+      MYSQL_DATABASE: newticket
+      MYSQL_ROOT_PASSWORD: newticket1234
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: newticket-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: 2601_choejangwoo
+    build: .
+    container_name: newticket-app
+    ports:
+      - "8080:8080"
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/newticket
+      DB_USERNAME: root
+      DB_PASSWORD: newticket1234
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: newticket-jwt-secret-key-must-be-at-least-32-chars-long
+      TOSS_SECRET_KEY: test_sk_Ba5PzR0ArnBn2evM5R9orvmYnNeD
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  mysql-data:
